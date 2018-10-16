@@ -80,7 +80,7 @@ def git_clone(repositories, destination, username, password):
       if r.startswith("#"):
          print "[-] ({}) Ignoring repository '{}' because excluded.".format(num, r)
       else:
-         f = destination + (r.split("/")[-1]).split(".")[0]
+         f = destination + (r.split("/")[-1]).split(".git")[0]
          if os.path.exists(f):
 		    print "[-] ({}) Ignoring repository '{}' because folder '{}' exists.".format(num, r, f)
          else:
