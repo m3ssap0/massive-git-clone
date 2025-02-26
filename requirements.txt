@@ -1,0 +1,1 @@
+dulwich --config-settings "--build-option=--pure"

@@ -1,99 +1,83 @@
-import sys, getopt
-import time, datetime
+#!/usr/bin/env python3
+
+import argparse
+import logging
 import os
-from git import Repo # pip install gitpython
+import sys
+from dulwich import porcelain
+from getpass import getpass
 
-# Reads and checks input parameters.
-def read_input(argv):
-   usage = "massive-git-clone.py -i|--input <input_file> [-d|--destination <destination_folder>] [-u|--username <git_username>] [-p|--password <git_password>]"
-   input_file = None
-   destination = '.'
-   username = None
-   password = None
-   
-   try:
-      opts, args = getopt.getopt(argv,"hi:d:u:p:",["input=","destination=","username=","password="])
-   except getopt.GetoptError:
-      print usage
-      sys.exit(2)
-	  
-   for opt, arg in opts:
-      if opt in ("-h", "--help"):
-         print usage
-         sys.exit()
-      elif opt in ("-i", "--input"):
-         input_file = arg
-      elif opt in ("-d", "--destination"):
-         destination = arg
-      elif opt in ("-u", "--username"):
-         username = arg
-      elif opt in ("-p", "--password"):
-         password = arg
+VERSION = "2.0 (2025-02-26)"
+DEFAULT_LOGGING_LEVEL = logging.INFO
 
-   if input_file is None or len(input_file.strip()) < 1:
-      print "[!] The input file can not be empty!"
-      sys.exit(2)
+def parse_arguments():
+    parser = argparse.ArgumentParser(
+        description=f"This is a Python script that can be used to clone several Git repositories defined, via URL, into a text file. - {VERSION}"
+    )
+    parser.add_argument("-i", "--input",
+                        required=True,
+                        help="Input file with the Git repositories URLs.")
+    parser.add_argument("-o", "--output",
+                        required=True,
+                        help="Output folder where the repositories will be cloned.")
+    parser.add_argument("-a", "--auth",
+                        required=False,
+                        help="Will ask for username and password to clone private repositories.")
+    parser.add_argument("-v", "--verbose",
+                        action="store_true",
+                        required=False,
+                        default=False,
+                        help="Verbose mode")
+    return parser.parse_args()
 
-   input_file = input_file.strip()
-   destination = destination.strip()
-   print "[*] Input file is: {}".format(input_file)
-   print "[*] Destination folder is: {}".format(destination)
-   
-   if not os.path.isfile(input_file):
-      print "[!] Input file provided is not a file!"
-      sys.exit(2)
-   if not os.path.isdir(destination):
-      print "[!] Destination provided is not a folder!"
-      sys.exit(2)
+def validate_input(args):
+      logging.debug("Validating input.")
+      if not os.path.isfile(args.input):
+         logging.fatal(f"Input file '{args.input}' does not exist.")
+         sys.exit(1)
+      if not os.path.isdir(args.output):
+         logging.fatal(f"Output folder '{args.output}' does not exist.")
+         sys.exit(1)
 
-   if not destination.endswith("/"):
-      destination = destination + "/"
-
-   if (username is None or len(username.strip()) < 1) and (password is not None and len(password.strip()) > 0):
-      print "[!] Username must be present!"
-      sys.exit(2)
-   if (password is None or len(password.strip()) < 1) and (username is not None and len(username.strip()) > 0):
-      print "[!] Password must be present!"
-      sys.exit(2)
-
-   if username is not None:
-      username = username.strip()
-   if password is not None:
-      password = password.strip()
-
-   return input_file, destination, username, password
-
-# Parses file to read repositories that will be cloned.
-def parse_file(input_file):
-   print "[*] Reading file '{}'.".format(input_file)
+def read_repositories(input_file):
+   logging.info(f"Reading repositories from file '{input_file}'.")
    with open(input_file) as f:
       repositories = f.readlines()
    repositories = [r.strip() for r in repositories]
-   print "[*] There are '{}' repositories in the file.".format(len(repositories))
    return repositories
 
-# Git clone all the repositories.
-def git_clone(repositories, destination, username, password):
-   num = 0
-   for r in repositories:
-      num = num + 1
-      if r.startswith("#"):
-         print "[-] ({}) Ignoring repository '{}' because excluded.".format(num, r)
+def git_clone(repositories, output_folder, username, password):
+   logging.info(f"Cloning repositories into folder '{output_folder}'.")
+   for repository in repositories:
+      if repository.startswith("#"):
+         logging.debug("Ignoring commented line.")
       else:
-         f = destination + (r.split("/")[-1]).split(".git")[0]
-         if os.path.exists(f):
-		    print "[-] ({}) Ignoring repository '{}' because folder '{}' exists.".format(num, r, f)
+         logging.debug(f"Cloning repository '{repository}'.")
+         if username is not None and password is not None:
+            porcelain.clone(source=repository, target=output_folder, depth=1, username=username, password=password)
          else:
-            print "[*] ({}) Cloning repository '{}' into folder '{}'.".format(num, r, f)
-            if username is not None and password is not None:
-               r_splitted = r.split("://")
-               r = r_splitted[0] + "://" + username + ":" + password + "@" + r_splitted[1]
-            Repo.clone_from(r, f)
+            porcelain.clone(source=repository, target=output_folder, depth=1)
 
-# Main execution.
+def main():
+   args = parse_arguments()
+   logging_level = DEFAULT_LOGGING_LEVEL
+   if args.verbose:
+      logging_level = logging.DEBUG
+   logging.basicConfig(level=logging_level, format="%(asctime)s - %(levelname)s - %(message)s")
+
+   validate_input(args)
+   input_file = args.input
+   output_folder = args.output
+
+   username = None
+   password = None
+   if args.auth:
+      username = input("Username: ")
+      password = getpass("Password: ")
+   
+   repositories = read_repositories(input_file)
+
+   git_clone(repositories, output_folder, username, password)
+
 if __name__ == "__main__":
-   print "Massive Git Clone - v1.0 (2018-10-09)"
-   input_file, destination, username, password = read_input(sys.argv[1:])
-   repositories = parse_file(input_file)
-   git_clone(repositories, destination, username, password)
-   print "Finished at '{}'.".format(datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S'))
+   main()
