@@ -52,11 +52,13 @@ def git_clone(repositories, output_folder, username, password):
       if repository.startswith("#"):
          logging.debug("Ignoring commented line.")
       else:
-         logging.debug(f"Cloning repository '{repository}'.")
+         logging.info(f"Cloning repository '{repository}'.")
+         repository_name = repository.split("/")[-1].replace(".git", "")
+         repository_folder = os.path.join(output_folder, repository_name)
          if username is not None and password is not None:
-            porcelain.clone(source=repository, target=output_folder, depth=1, username=username, password=password)
+            porcelain.clone(source=repository, target=repository_folder, depth=1, username=username, password=password)
          else:
-            porcelain.clone(source=repository, target=output_folder, depth=1)
+            porcelain.clone(source=repository, target=repository_folder, depth=1)
 
 def main():
    args = parse_arguments()
@@ -65,19 +67,28 @@ def main():
       logging_level = logging.DEBUG
    logging.basicConfig(level=logging_level, format="%(asctime)s - %(levelname)s - %(message)s")
 
-   validate_input(args)
-   input_file = args.input
-   output_folder = args.output
+   try:
 
-   username = None
-   password = None
-   if args.auth:
-      username = input("Username: ")
-      password = getpass("Password: ")
+      validate_input(args)
+      input_file = args.input
+      output_folder = args.output
+
+      username = None
+      password = None
+      if args.auth:
+         username = input("Username: ")
+         password = getpass("Password: ")
+      
+      repositories = read_repositories(input_file)
+
+      git_clone(repositories, output_folder, username, password)
    
-   repositories = read_repositories(input_file)
-
-   git_clone(repositories, output_folder, username, password)
+   except KeyboardInterrupt:
+      logging.error("Process interrupted by user.")
+      sys.exit(1)
+   except Exception as e:
+      logging.fatal(f"An error occurred: {e}")
+      sys.exit(1)
 
 if __name__ == "__main__":
    main()
